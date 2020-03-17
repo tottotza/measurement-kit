@@ -4,9 +4,18 @@
 
 #include <measurement_kit/ffi.h>
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+static mk_task_t *task;
+
+static void handler(int) {
+    (void)write(1, "SIGINT", 6);
+    mk_task_interrupt(task);
+}
 
 /*
  * Ideally it would be nice to have this written in C. For this to work,
@@ -14,7 +23,7 @@
  * statically with its own version of libc++.
  */
 int main() {
-    mk_task_t *task = mk_task_start(R"({
+    task = mk_task_start(R"({
         "name": "Ndt",
         "log_level": "INFO",
         "options": {
@@ -24,6 +33,7 @@ int main() {
         fprintf(stderr, "ERROR: cannot create/start task\n");
         exit(1);
     }
+    signal(SIGINT, handler);
 
     while (!mk_task_is_done(task)) {
         mk_event_t *event = mk_task_wait_for_next_event(task);

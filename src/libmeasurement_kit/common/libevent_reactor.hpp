@@ -99,6 +99,8 @@ class LibeventReactor : public Reactor, public NonCopyable, public NonMovable {
 
     // ## Event loop management
 
+    std::atomic_bool interrupted{false};
+
     event_base *get_event_base() override { return evbase.get(); }
 
     void run() override {
@@ -106,6 +108,15 @@ class LibeventReactor : public Reactor, public NonCopyable, public NonMovable {
             auto ev_status = event_base_dispatch(evbase.get());
             if (ev_status < 0) {
                 throw std::runtime_error("event_base_dispatch");
+            }
+            // If we have been interrupted, enter into a special mode where we
+            // wait for background threads to complete. Then we just leave.
+            while (interrupted) {
+                while (worker.concurrency() > 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
+                interrupted = false;
+                return;
             }
             /*
                 Explanation: event_base_loop() returns one when there are no
@@ -133,6 +144,7 @@ class LibeventReactor : public Reactor, public NonCopyable, public NonMovable {
         if (event_base_loopbreak(evbase.get()) != 0) {
             throw std::runtime_error("event_base_loopbreak");
         }
+        interrupted = true;
     }
 
     // ## Call later
